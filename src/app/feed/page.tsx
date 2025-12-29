@@ -14,6 +14,7 @@ import {
   doc, 
   getDoc,
   updateDoc,
+  deleteDoc,
   arrayUnion,
   arrayRemove 
 } from "firebase/firestore";
@@ -28,7 +29,24 @@ export default function FeedPage() {
   const [newPost, setNewPost] = useState("");
   const [isPosting, setIsPosting] = useState(false);
 
-  // 1. Route Protection & Fetch User Profile
+  const [alert, setAlert] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: (() => void) | null;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
+
+  const showCustomAlert = (title: string, message: string, onConfirm?: () => void) => {
+    setAlert({ isOpen: true, title, message, onConfirm: onConfirm || null });
+  };
+
+  const closeAlert = () => setAlert({ ...alert, isOpen: false });
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -47,7 +65,6 @@ export default function FeedPage() {
     }
   }, [user, authLoading, router]);
 
-  // 2. Real-time Post Listener
   useEffect(() => {
     const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -61,7 +78,6 @@ export default function FeedPage() {
     return () => unsubscribe();
   }, []);
 
-  // 3. Create Post
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPost.trim() || !userData) return;
@@ -75,17 +91,16 @@ export default function FeedPage() {
         displayName: userData.displayName,
         photoURL: userData.photoURL || "",
         createdAt: serverTimestamp(),
-        likes: [] // Initialize empty likes array
+        likes: [] 
       });
       setNewPost("");
     } catch (error) {
-      console.error("Error creating post:", error);
+      showCustomAlert("Error", "Could not share your gold at this time.");
     } finally {
       setIsPosting(false);
     }
   };
 
-  // 4. Like / Unlike Logic
   const handleLike = async (postId: string, postLikes: string[]) => {
     if (!user) return;
     const postRef = doc(db, "posts", postId);
@@ -93,17 +108,27 @@ export default function FeedPage() {
 
     try {
       if (hasLiked) {
-        await updateDoc(postRef, {
-          likes: arrayRemove(user.uid)
-        });
+        await updateDoc(postRef, { likes: arrayRemove(user.uid) });
       } else {
-        await updateDoc(postRef, {
-          likes: arrayUnion(user.uid)
-        });
+        await updateDoc(postRef, { likes: arrayUnion(user.uid) });
       }
     } catch (error) {
       console.error("Error toggling like:", error);
     }
+  };
+
+  const handleDeletePost = (postId: string) => {
+    showCustomAlert(
+      "Confirm Delete", 
+      "Are you sure you want to remove this gold post?",
+      async () => {
+        try {
+          await deleteDoc(doc(db, "posts", postId));
+        } catch (error) {
+          showCustomAlert("Error", "Failed to delete post.");
+        }
+      }
+    );
   };
 
   if (authLoading) return <div className="min-h-screen bg-background" />;
@@ -111,31 +136,43 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen bg-background text-foreground font-jakarta pb-20">
       
-      {/* Premium Sticky Nav */}
+      {alert.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-sm rounded-[2.5rem] bg-secondary p-8 shadow-2xl border border-white/10 text-center animate-in zoom-in duration-300">
+            <h2 className="text-2xl font-bold font-lexend text-primary mb-2 uppercase tracking-tight">{alert.title}</h2>
+            <p className="text-sm opacity-60 mb-8 leading-relaxed font-medium">{alert.message}</p>
+            <div className="flex flex-col gap-3">
+              {alert.onConfirm ? (
+                <>
+                  <button onClick={() => { alert.onConfirm?.(); closeAlert(); }} style={{ background: "linear-gradient(to right, var(--gradient-from), var(--gradient-to))" }} className="w-full rounded-2xl py-4 font-black text-primary-foreground shadow-lg hover:brightness-110 active:scale-95 transition-all uppercase tracking-widest text-xs">Confirm</button>
+                  <button onClick={closeAlert} className="w-full rounded-2xl py-4 font-bold opacity-40 hover:opacity-100 hover:bg-white/5 transition-all uppercase tracking-widest text-xs">Cancel</button>
+                </>
+              ) : (
+                <button onClick={closeAlert} style={{ background: "linear-gradient(to right, var(--gradient-from), var(--gradient-to))" }} className="w-full rounded-2xl py-4 font-black text-primary-foreground shadow-lg hover:brightness-110 active:scale-95 transition-all uppercase tracking-widest text-xs">Okay</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="sticky top-0 z-40 w-full border-b border-white/5 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-2xl font-black tracking-tighter font-lexend text-primary">
-            GOLD
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-6">
+          <Link href="/" className="text-3xl md:text-4xl font-black tracking-tighter font-lexend uppercase flex items-center gap-2">
+            <span className="text-foreground">Social</span>
+            <span className="text-primary">Gold</span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             {userData?.photoURL && (
-              <div className="h-8 w-8 overflow-hidden rounded-full border border-primary/50">
+              <Link href={`/profile/${userData.username}`} className="h-10 w-10 overflow-hidden rounded-full border-2 border-primary/50 shadow-lg hover:scale-105 transition-transform">
                 <img src={userData.photoURL} alt="Me" className="h-full w-full object-cover" />
-              </div>
+              </Link>
             )}
-            <button 
-              onClick={() => logout()}
-              className="text-[10px] font-bold uppercase tracking-widest text-primary hover:opacity-70 transition-all px-2 py-1"
-            >
-              Logout
-            </button>
+            <button onClick={() => logout()} className="text-sm md:text-base font-bold uppercase tracking-widest text-primary hover:opacity-70 transition-all border-2 border-primary/20 px-5 py-2.5 rounded-2xl bg-primary/5 shadow-md">Logout</button>
           </div>
         </div>
       </nav>
 
-      <main className="mx-auto max-w-2xl px-4 pt-8">
-        
-        {/* Create Post Area */}
+      <main className="mx-auto max-w-2xl px-4 pt-10">
         <div className="mb-12 rounded-[2.5rem] bg-secondary p-8 shadow-2xl border border-white/5">
           <div className="flex gap-5">
             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-background border border-primary/20 shadow-inner">
@@ -146,84 +183,48 @@ export default function FeedPage() {
               )}
             </div>
             <form onSubmit={handleCreatePost} className="w-full">
-              <textarea
-                value={newPost}
-                onChange={(e) => setNewPost(e.target.value)}
-                placeholder="What is happening in your world?"
-                className="w-full resize-none border-none bg-transparent p-2 text-lg focus:outline-none focus:ring-0 placeholder:opacity-30"
-                rows={3}
-              />
-              <div className="mt-4 flex justify-end border-t border-white/5 pt-5">
-                <button
-                  type="submit"
-                  disabled={isPosting || !newPost.trim()}
-                  style={{ 
-                    background: "linear-gradient(to right, var(--gradient-from), var(--gradient-to))",
-                    boxShadow: !newPost.trim() ? "none" : "0 0 20px rgba(202, 138, 4, 0.4)"
-                  }}
-                  className={`rounded-2xl px-10 py-3 text-sm font-bold text-primary-foreground transition-all duration-300 transform active:scale-95 ${
-                    !newPost.trim() 
-                      ? "opacity-30 grayscale cursor-not-allowed" 
-                      : "hover:scale-105 hover:brightness-110 hover:shadow-[0_0_30px_rgba(202,138,4,0.6)]"
-                  }`}
-                >
-                  {isPosting ? "Posting..." : "Share Gold"}
+              <textarea value={newPost} onChange={(e) => setNewPost(e.target.value)} placeholder="What is happening in your world?" className="w-full resize-none border-none bg-transparent p-2 text-xl focus:outline-none focus:ring-0 placeholder:opacity-30" rows={3} />
+              <div className="mt-4 flex justify-end border-t border-white/5 pt-6">
+                <button type="submit" disabled={isPosting} style={{ background: "linear-gradient(to right, var(--gradient-from), var(--gradient-to))", boxShadow: "0 0 30px rgba(202, 138, 4, 0.6)" }} className={`rounded-2xl px-12 py-4 text-base font-black text-primary-foreground transition-all duration-300 transform active:scale-95 hover:scale-105 hover:brightness-110 hover:shadow-[0_0_40px_rgba(202, 138, 4, 0.8)] ${isPosting ? "opacity-70 cursor-not-allowed" : "opacity-100"}`}>
+                  {isPosting ? "POSTING..." : "SHARE GOLD"}
                 </button>
               </div>
             </form>
           </div>
         </div>
 
-        {/* Post Feed */}
-        <div className="space-y-8">
+        <div className="space-y-10">
           {posts.map((post) => {
             const hasLiked = user && post.likes?.includes(user.uid);
-            
+            const isOwner = user && post.uid === user.uid;
             return (
-              <div 
-                key={post.id} 
-                className="rounded-[2.5rem] bg-secondary p-8 shadow-lg border border-white/5 animate-in fade-in slide-in-from-bottom-6 duration-700"
-              >
+              <div key={post.id} className="rounded-[2.5rem] bg-secondary p-8 shadow-xl border border-white/5 animate-in fade-in slide-in-from-bottom-8 duration-700">
                 <div className="flex items-start gap-5">
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-primary/30 shadow-md">
+                  <Link href={`/profile/${post.username}`} className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-primary/30 shadow-md hover:scale-105 transition-transform">
                     {post.photoURL ? (
                       <img src={post.photoURL} alt={post.username} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-background text-sm">👤</div>
                     )}
-                  </div>
+                  </Link>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-primary font-lexend text-lg leading-none">
-                          {post.displayName}
-                        </span>
-                        <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest">
-                          @{post.username}
-                        </span>
-                      </div>
+                      <Link href={`/profile/${post.username}`} className="flex items-center gap-3 group">
+                        <span className="font-bold text-primary font-lexend text-2xl leading-none group-hover:underline underline-offset-4 decoration-2">{post.displayName}</span>
+                        <span className="text-[12px] font-bold opacity-30 uppercase tracking-[0.2em]">@{post.username}</span>
+                      </Link>
+                      {isOwner && (
+                        <button onClick={() => handleDeletePost(post.id)} className="opacity-20 hover:opacity-100 hover:text-red-500 transition-all p-2 text-xl">🗑️</button>
+                      )}
                     </div>
-                    
-                    <p className="mt-4 text-base leading-relaxed opacity-90 whitespace-pre-wrap font-medium">
-                      {post.content}
-                    </p>
-                    
-                    {/* Interactive Actions */}
-                    <div className="mt-8 flex items-center gap-8 border-t border-white/5 pt-5">
-                      <button 
-                        onClick={() => handleLike(post.id, post.likes || [])}
-                        className={`flex items-center gap-2 text-xs font-bold transition-all duration-300 ${
-                          hasLiked 
-                            ? "text-primary scale-110" 
-                            : "opacity-40 hover:opacity-100 hover:text-primary"
-                        }`}
-                      >
-                        <span className="text-lg">{hasLiked ? "✨" : "⭐"}</span>
+                    <p className="mt-5 text-xl leading-relaxed opacity-90 whitespace-pre-wrap font-medium">{post.content}</p>
+                    <div className="mt-8 flex items-center gap-12 border-t border-white/5 pt-8">
+                      <button onClick={() => handleLike(post.id, post.likes || [])} className={`flex items-center gap-4 text-sm font-black transition-all duration-300 ${hasLiked ? "text-primary scale-110" : "opacity-40 hover:opacity-100 hover:text-primary"}`}>
+                        <span className="text-3xl">{hasLiked ? "✨" : "⭐"}</span>
                         <span>{post.likes?.length || 0}</span>
                       </button>
-
-                      <button className="flex items-center gap-2 text-xs font-bold opacity-40 hover:opacity-100 hover:text-primary transition-all">
-                        <span className="text-lg">💬</span>
+                      <button className="flex items-center gap-4 text-sm font-black opacity-40 hover:opacity-100 hover:text-primary transition-all">
+                        <span className="text-3xl">💬</span>
                         <span>0</span>
                       </button>
                     </div>
@@ -232,12 +233,6 @@ export default function FeedPage() {
               </div>
             );
           })}
-
-          {posts.length === 0 && (
-            <div className="py-24 text-center">
-              <p className="font-lexend text-xl uppercase tracking-widest opacity-20">The vault is empty</p>
-            </div>
-          )}
         </div>
       </main>
     </div>

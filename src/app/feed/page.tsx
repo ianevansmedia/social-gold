@@ -30,6 +30,27 @@ import NotificationBell from "@/components/NotificationBell";
 import PostSkeleton from "@/components/PostSkeleton";
 import confetti from "canvas-confetti";
 
+// Sub-component for smooth image loading
+function PostImage({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative mt-4 md:mt-6 rounded-2xl md:rounded-3xl overflow-hidden border border-white/5 shadow-2xl bg-white/5 min-h-[200px]">
+      {!loaded && (
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/5 to-transparent flex items-center justify-center">
+            <span className="text-primary text-xs font-black uppercase tracking-widest opacity-20">Polishing Gold...</span>
+        </div>
+      )}
+      <img 
+        src={src} 
+        alt="Post content" 
+        loading="lazy" // Native browser lazy loading
+        onLoad={() => setLoaded(true)}
+        className={`w-full max-h-[400px] md:max-h-[500px] object-cover transition-opacity duration-1000 ease-in-out ${loaded ? 'opacity-100' : 'opacity-0'}`} 
+      />
+    </div>
+  );
+}
+
 export default function FeedPage() {
   const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -82,7 +103,9 @@ export default function FeedPage() {
 
     try {
       const baseQuery = collection(db, "posts");
-      const constraints: any[] = [orderBy("createdAt", "desc"), limit(10)];
+      // UPDATED: Limit changed to 5 for faster Base64 processing
+      const constraints: any[] = [orderBy("createdAt", "desc"), limit(5)];
+      
       if (feedType === "following") {
         const followingList = userData?.following || [];
         if (followingList.length === 0) {
@@ -91,14 +114,23 @@ export default function FeedPage() {
         constraints.unshift(where("uid", "in", followingList));
       }
       if (isLoadMore && lastDoc) constraints.push(startAfter(lastDoc));
+      
       const q = query(baseQuery, ...constraints);
       const snapshot = await getDocs(q);
       const newPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
       if (isLoadMore) setPosts(prev => [...prev, ...newPosts]);
       else setPosts(newPosts);
+      
       setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
-      setHasMore(snapshot.docs.length === 10);
-    } catch (error) { console.error(error); } finally { setIsLoadingInitial(false); setIsLoadingMore(false); }
+      // UPDATED: Check for 5
+      setHasMore(snapshot.docs.length === 5);
+    } catch (error) { 
+        console.error(error); 
+    } finally { 
+        setIsLoadingInitial(false);
+        setIsLoadingMore(false); 
+    }
   };
 
   useEffect(() => {
@@ -167,7 +199,7 @@ export default function FeedPage() {
     });
   };
 
-  if (authLoading) return <div className="min-h-screen bg-transparent" />;
+  if (authLoading) return null;
 
   return (
     <div className="min-h-screen text-foreground font-jakarta pb-20">
@@ -217,7 +249,10 @@ export default function FeedPage() {
             <form onSubmit={handleCreatePost} className="w-full">
               <textarea value={newPost} onChange={(e) => setNewPost(e.target.value)} placeholder="What is happening?" className="w-full resize-none border-none bg-transparent p-1 md:p-2 text-lg md:text-xl focus:outline-none focus:ring-0 placeholder:text-foreground/30 text-foreground font-medium" rows={3} />
               {postImage && (
-                <div className="relative mt-4 mb-4 rounded-2xl md:rounded-3xl overflow-hidden border-2 border-primary/20 animate-in zoom-in duration-300"><img src={postImage} alt="Preview" className="w-full max-h-60 md:max-h-80 object-cover" /><button onClick={() => setPostImage(null)} className="absolute top-2 right-2 md:top-4 md:right-4 bg-black/50 text-white h-8 w-8 md:h-10 md:w-10 rounded-full backdrop-blur-md font-bold hover:bg-black transition-all">✕</button></div>
+                <div className="relative mt-4 mb-4 rounded-2xl md:rounded-3xl overflow-hidden border-2 border-primary/20 animate-in zoom-in duration-300">
+                  <img src={postImage} alt="Preview" className="w-full max-h-60 md:max-h-80 object-cover" />
+                  <button onClick={() => setPostImage(null)} className="absolute top-2 right-2 md:top-4 md:right-4 bg-black/50 text-white h-8 w-8 md:h-10 md:w-10 rounded-full backdrop-blur-md font-bold hover:bg-black transition-all">✕</button>
+                </div>
               )}
             </form>
           </div>
@@ -250,7 +285,6 @@ export default function FeedPage() {
                     <Link href={`/profile/${post.username}`} className="h-10 w-10 md:h-14 md:w-14 shrink-0 overflow-hidden rounded-full border-2 border-primary/30 shadow-md hover:scale-105 transition-transform">{post.photoURL ? (<img src={post.photoURL} alt={post.username} className="h-full w-full object-cover" />) : (<div className="flex h-full w-full items-center justify-center bg-background text-sm">👤</div>)}</Link>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        {/* FIXED: Removed leading-none to stop descender cropping */}
                         <Link href={`/profile/${post.username}`} className="flex items-center gap-2 md:gap-3 group truncate pb-1">
                           <span className="font-bold text-primary font-lexend text-lg md:text-2xl leading-tight group-hover:underline underline-offset-4 decoration-2 truncate">{post.displayName}</span>
                           <span className="text-[8px] md:text-[12px] font-bold opacity-60 uppercase tracking-[0.1em] md:tracking-[0.2em] truncate">@{post.username}</span>
@@ -258,7 +292,9 @@ export default function FeedPage() {
                         {isOwner && (<button onClick={() => handleDeletePost(post.id)} className="text-primary hover:text-red-500 transition-all p-1 md:p-2 text-lg md:text-xl hover:scale-125">🗑️</button>)}
                       </div>
                       <p className="mt-3 md:mt-5 text-base md:text-xl leading-relaxed opacity-100 whitespace-pre-wrap font-medium break-words">{post.content}</p>
-                      {post.postImage && (<div className="mt-4 md:mt-6 rounded-2xl md:rounded-3xl overflow-hidden border border-white/5 shadow-2xl"><img src={post.postImage} alt="Post content" className="w-full max-h-[400px] md:max-h-[500px] object-cover" /></div>)}
+                      
+                      {/* LAZY LOADED IMAGE */}
+                      {post.postImage && <PostImage src={post.postImage} />}
                       
                       <div className="mt-6 md:mt-8 flex items-center gap-4 md:gap-6 border-t border-white/5 pt-6 md:pt-8">
                         <button onClick={() => handleLike(post)} className="flex items-center gap-2 text-[10px] md:text-sm font-black transition-all hover:scale-110 active:scale-95 text-primary group">
@@ -277,6 +313,8 @@ export default function FeedPage() {
             })
           )}
         </div>
+
+        {isLoadingMore && <div className="mt-6 md:mt-10"><PostSkeleton /></div>}
       </main>
     </div>
   );

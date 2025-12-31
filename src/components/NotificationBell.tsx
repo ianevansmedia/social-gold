@@ -23,11 +23,12 @@ export default function NotificationBell() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // FIXED: Added 'as any' to map
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setNotifications(data);
-      setUnreadCount(data.filter(n => !n.read).length);
+      // FIXED: Explicitly typed 'n' as any
+      setUnreadCount(data.filter((n: any) => !n.read).length);
     }, (error) => {
-      // Silently catch permission errors during logout
       if (error.code !== "permission-denied") console.error(error);
     });
 

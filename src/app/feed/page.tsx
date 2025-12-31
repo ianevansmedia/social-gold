@@ -89,7 +89,8 @@ export default function FeedPage() {
       if (isLoadMore && lastDoc) constraints.push(startAfter(lastDoc));
       const q = query(baseQuery, ...constraints);
       const snapshot = await getDocs(q);
-      const newPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // FIXED: Added 'as any'
+      const newPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       if (isLoadMore) setPosts(prev => [...prev, ...newPosts]);
       else setPosts(newPosts);
       setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
@@ -153,7 +154,7 @@ export default function FeedPage() {
   if (authLoading) return null;
 
   return (
-    <div className="text-foreground font-jakarta">
+    <div className="min-h-screen text-foreground font-jakarta pb-20">
       {alert.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-[2.5rem] bg-secondary p-8 shadow-2xl border border-white/10 text-center animate-in zoom-in duration-300">
@@ -172,7 +173,6 @@ export default function FeedPage() {
 
       <Navbar />
 
-      {/* FULL WIDTH TABS CONTAINER */}
       <div className="w-full border-b border-white/5 bg-background/40 backdrop-blur-xl sticky top-[73px] md:top-[89px] z-30">
           <div className="mx-auto flex max-w-2xl px-6">
             <button onClick={() => setFeedType("global")} className={`flex-1 py-4 md:py-5 text-xs md:text-base font-medium uppercase tracking-[0.2em] md:tracking-[0.3em] transition-all border-b-2 ${feedType === "global" ? "border-primary text-primary" : "border-transparent opacity-30"}`}>Global</button>
